@@ -9,4 +9,5 @@ endif()
 add_subdirectory(virvo)
 
 add_subdirectory(virvo/rayrend)
+add_subdirectory(virvo/splatrend)
 

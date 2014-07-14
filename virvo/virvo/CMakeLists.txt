@@ -76,6 +76,8 @@ set(VIRVO_HEADERS
   private/vvtimer.h
   private/work_queue.h
 
+  cl/utils.h
+
   cuda/array.h
   cuda/debug.h
   cuda/graphics_resource.h
@@ -226,6 +228,8 @@ set(VIRVO_SOURCES
   private/vvimage.cpp
   private/vvlog.cpp
   private/vvmessage.cpp
+
+  cl/utils.cpp
 
   cuda/debug.cpp
   cuda/graphics_resource.cpp
