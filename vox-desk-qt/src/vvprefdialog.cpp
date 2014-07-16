@@ -134,6 +134,7 @@ vvPrefDialog::vvPrefDialog(vvCanvas* canvas, QWidget* parent)
   impl->rendererDescriptions.insert(std::pair<std::string, std::string>("planar", "OpenGL textures"));
   impl->rendererDescriptions.insert(std::pair<std::string, std::string>("spherical", "OpenGL textures"));
   impl->rendererDescriptions.insert(std::pair<std::string, std::string>("rayrend", "Ray casting"));
+  impl->rendererDescriptions.insert(std::pair<std::string, std::string>("splatrend", "Progressive splatting"));
 
   impl->algoDescriptions.insert(std::pair<std::string, std::string>("default", "Autoselect"));
   impl->algoDescriptions.insert(std::pair<std::string, std::string>("slices", "2D textures (slices)"));
@@ -154,6 +155,13 @@ vvPrefDialog::vvPrefDialog(vvCanvas* canvas, QWidget* parent)
   {
     ui->rendererBox->addItem(impl->rendererDescriptions["rayrend"].c_str());
     impl->rendererMap.insert(std::pair<int, vvRenderer::RendererType>(idx, vvRenderer::RAYREND));
+    ++idx;
+  }
+
+  if (vvRendererFactory::hasRenderer(vvRenderer::SPLATREND))
+  {
+    ui->rendererBox->addItem(impl->rendererDescriptions["splatrend"].c_str());
+    impl->rendererMap.insert(std::pair<int, vvRenderer::RendererType>(idx, vvRenderer::SPLATREND));
     ++idx;
   }
 
@@ -462,6 +470,9 @@ void vvPrefDialog::emitRenderer()
     case vvRenderer::TEXREND:
       name = impl->texRendTypeMap[ui->geometryBox->currentIndex()];
       options["voxeltype"] = impl->voxTypeMap[ui->voxTypeBox->currentIndex()];
+      break;
+    case vvRenderer::SPLATREND:
+      name = "splatrend";
       break;
     default:
       name = "default";

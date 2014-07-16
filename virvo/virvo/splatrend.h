@@ -49,6 +49,8 @@ private:
 
 } // virvo
 
+extern "C" VVAPI vvRenderer* createSplatRend(vvVolDesc* vd, vvRenderState const& rs);
+
 #endif
 
 

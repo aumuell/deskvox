@@ -1340,3 +1340,11 @@ void virvo::SplatRend::createSamples()
   std::cerr << impl->scalars.size() << std::endl;
 }
 
+
+/* plugin create */
+vvRenderer* createSplatRend(vvVolDesc* vd, vvRenderState const& rs)
+{
+    return new virvo::SplatRend(vd, rs);
+}
+
+

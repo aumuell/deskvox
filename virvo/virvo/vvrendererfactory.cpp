@@ -225,6 +225,7 @@ void init()
   rendererTypeMap["rayrendfpu"] = vvRenderer::RAYREND;
   rendererTypeMap["rayrendsse2"] = vvRenderer::RAYREND;
   rendererTypeMap["rayrendsse4_1"] = vvRenderer::RAYREND;
+  rendererTypeMap["splatrend"] = vvRenderer::SPLATREND;
   rendererTypeMap["volpack"] = vvRenderer::VOLPACK;
   rendererTypeMap["image"] = vvRenderer::REMOTE_IMAGE;
   rendererTypeMap["ibr"] = vvRenderer::REMOTE_IBR;
@@ -629,6 +630,27 @@ vvRenderer *create(vvVolDesc *vd, const vvRenderState &rs, const char *t, const 
       VV_LOG(0) << "No ray casting plugin loaded for architecture " << arch << std::endl;
     }
   }
+  case vvRenderer::SPLATREND:
+  {
+    const char* pluginEnv = "VV_PLUGIN_PATH";
+    char* pluginPath = getenv(pluginEnv);
+    std::string ppath = pluginPath == NULL ? "." : pluginPath;
+#ifdef __APPLE__
+    std::string path = pluginPath + std::string("libsplatrend.dylib");
+#else
+    std::string path = pluginPath + std::string("libsplatrend.so"); /* TODO */
+#endif
+    VV_LOG(0) << "splatrend path: " << path;
+    VV_SHLIB_HANDLE handle = vvDynLib::open(path.c_str(), 1 /* RTLD_LAZY */);
+    vvRenderer* (*create)(vvVolDesc*, vvRenderState const&);
+    *(void**)(&create) = vvDynLib::sym(handle, "createSplatRend");
+    if (create != 0)
+    {
+        return (*create)(vd, rs);
+    }
+    VV_LOG(0) << "No splatrend plugin loaded";
+    return 0;
+  }
   // fall through
   case vvRenderer::TEXREND:
   default:
@@ -734,6 +756,8 @@ bool vvRendererFactory::hasRenderer(vvRenderer::RendererType type)
     }
     return false;
   }
+  case vvRenderer::SPLATREND:
+    return true; /* TODO */
   case vvRenderer::TEXREND:
 #ifdef HAVE_OPENGL
     return true;
