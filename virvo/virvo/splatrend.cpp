@@ -1082,11 +1082,11 @@ void virvo::SplatRend::renderSplats()
 #if 1
   cl_mem invModelview = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
   cl_mem invProjection = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
+  cl_mem viewport = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(virvo::Viewport), nullptr, nullptr);
 
   auto invmv = inverse(gl::getModelviewMatrix());
   auto invpr = inverse(gl::getProjectionMatrix());
-
-  virvo::Viewport vp = gl::getViewport();
+  auto vp = gl::getViewport();
 
   cl_int err = clEnqueueAcquireGLObjects(impl->clprogram->commands, 1, &impl->clprogram->clpbo, 0, NULL, NULL);
   if (err != CL_SUCCESS)
@@ -1096,6 +1096,7 @@ void virvo::SplatRend::renderSplats()
 
   err = clEnqueueWriteBuffer(impl->clprogram->commands, invModelview, CL_TRUE, 0, sizeof(float) * 16, invmv.data(), 0, NULL, NULL);
   err |= clEnqueueWriteBuffer(impl->clprogram->commands, invProjection, CL_TRUE, 0, sizeof(float) * 16, invpr.data(), 0, NULL, NULL);
+  err |= clEnqueueWriteBuffer(impl->clprogram->commands, viewport, CL_TRUE, 0, sizeof(virvo::Viewport), &vp, 0, nullptr, nullptr);
 
   cl_mem blockCounter = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_WRITE, sizeof(unsigned int), NULL, NULL);
   if (!blockCounter)
@@ -1124,7 +1125,7 @@ void virvo::SplatRend::renderSplats()
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(cl_mem), &impl->clprogram->tf);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(cl_mem), &invModelview);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(cl_mem), &invProjection);
-  err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(virvo::Viewport), &vp[0]);
+  err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(cl_mem), &viewport);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(cl_mem), &blockCounter);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(numBlocks), &numBlocks);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(gridWidth), &gridWidth);
