@@ -274,6 +274,12 @@ CLProgram* initCLProgram()
   clGetPlatformIDs(0, NULL, &pcount);
   std::vector<cl_platform_id> platforms(pcount);
   clGetPlatformIDs(pcount, &platforms[0], NULL);
+  if (pcount == 0)
+  {
+    VV_LOG(0) << "No OpenCL platforms found";
+    delete program;
+    return nullptr;
+  }
 
   cl_uint dcount;
   cl_int err = clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 0, NULL, &dcount);
@@ -283,7 +289,6 @@ CLProgram* initCLProgram()
     delete program;
     return nullptr;
   }
-
   if (dcount == 0)
   {
     VV_LOG(0) << "No OpenCL devices found: " << virvo::cl::errorString(err);
@@ -294,8 +299,30 @@ CLProgram* initCLProgram()
   std::vector<cl_device_id> deviceids(dcount);
   err = clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, dcount, &deviceids[0], NULL);
 
+  if (err != CL_SUCCESS)
+  {
+    VV_LOG(0) << "Error enumerating device IDs (dcount=" << dcount << "): " << virvo::cl::errorString(err);
+    delete program;
+    return nullptr;
+  }
+
+  VV_LOG(0) << "Have " << dcount << " OpenCL devices";
+  for (cl_uint i=0; i<dcount; ++i)
+  {
+     std::vector<char> vendor;
+     size_t sz = 0;
+     err = clGetDeviceInfo(deviceids[i], CL_DEVICE_VENDOR, 0, NULL, &sz);
+     if (err == CL_SUCCESS)
+     {
+        vendor.resize(sz);
+        err = clGetDeviceInfo(deviceids[i], CL_DEVICE_VENDOR, vendor.size(), &vendor[0], NULL);
+        VV_LOG(0) << "Device " << i << " vendor: " << std::string(&vendor[0], vendor.size());
+     }
+  }
+
+
   // TODO: choose a device
-  program->deviceid = deviceids[0];
+  program->deviceid = deviceids[dcount-1];
 
 #ifdef __APPLE__
   CGLContextObj glContext = CGLGetCurrentContext();
