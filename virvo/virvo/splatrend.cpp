@@ -200,7 +200,7 @@ void createImage(size_t w, size_t h, const std::unique_ptr<CLProgram>& program,
 #endif
     if (err != CL_SUCCESS)
     {
-        VV_LOG(0) << "Error creating image buffer";
+        VV_LOG(0) << "Error creating image buffer: " << virvo::cl::errorString(err);
         return;
     }
 
@@ -239,14 +239,14 @@ CLProgram* initCLProgram()
   cl_int err = clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 0, NULL, &dcount);
   if (err != CL_SUCCESS)
   {
-    VV_LOG(0) << "Error creating device group";
+    VV_LOG(0) << "Error creating device group: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
 
   if (dcount == 0)
   {
-    VV_LOG(0) << "No OpenCL devices found";
+    VV_LOG(0) << "No OpenCL devices found: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -289,7 +289,7 @@ CLProgram* initCLProgram()
   program->context = clCreateContext(&program->ctxproperties[0], 1, &program->deviceid, NULL, NULL, &err);
   if (!program->context)
   {
-    VV_LOG(0) << "Error creating compute context";
+    VV_LOG(0) << "Error creating compute context: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -297,7 +297,7 @@ CLProgram* initCLProgram()
   program->commands = clCreateCommandQueue(program->context, program->deviceid, CL_QUEUE_PROFILING_ENABLE, &err);
   if (!program->commands)
   {
-    VV_LOG(0) << "Error creating command queue";
+    VV_LOG(0) << "Error creating command queue: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -312,7 +312,7 @@ CLProgram* initCLProgram()
   program->program = clCreateProgramWithSource(program->context, 1, (const char**)&source, NULL, &err);
   if (!program->program)
   {
-    VV_LOG(0) << "Error creating program";
+    VV_LOG(0) << "Error creating program: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -348,7 +348,7 @@ CLProgram* initCLProgram()
   program->spherekernel = clCreateKernel(program->program, kernelname.c_str(), &err);
   if (!program->spherekernel || err != CL_SUCCESS)
   {
-    VV_LOG(0) << "Error creating sphere kernel";
+    VV_LOG(0) << "Error creating sphere kernel: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -379,7 +379,7 @@ CLProgram* initCLProgram()
   program->clpbo = clCreateFromGLBuffer(program->context, CL_MEM_READ_WRITE, program->glpbo, &err);
   if (err != CL_SUCCESS)
   {
-    VV_LOG(0) << "clCreateFromGLBuffer() failed";
+    VV_LOG(0) << "clCreateFromGLBuffer() failed: " << virvo::cl::errorString(err);
     delete program;
     return nullptr;
   }
@@ -442,7 +442,7 @@ bool sortLeafs(const std::unique_ptr<CLProgram>& program, const std::vector<inde
   program->indexbuffer = clCreateFromGLBuffer(program->context, 0, *indexbuffer, &err);
   if (err != CL_SUCCESS)
   {
-    VV_LOG(0) << "clCreateFromGLBuffer(indexbuffer) failed";
+    VV_LOG(0) << "clCreateFromGLBuffer(indexbuffer) failed: " << virvo::cl::errorString(err);
     return false;
   }
 
@@ -863,7 +863,10 @@ virvo::SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
   vd->computeTFTexture(lutEntries, 1, 1, &impl->tf[0]);
 
   impl->clprogram = std::unique_ptr<CLProgram>(initCLProgram());
-  updateCLTf(std::move(impl->clprogram), impl->tf, impl->opacityscale);
+  if (impl->clprogram)
+  {
+     updateCLTf(std::move(impl->clprogram), impl->tf, impl->opacityscale);
+  }
   impl->pointspernode = 50;
   createSamples();
 
