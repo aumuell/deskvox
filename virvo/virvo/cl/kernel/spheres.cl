@@ -139,13 +139,13 @@ __kernel void trace(
     uint x = blockX * get_local_size(0) + get_local_id(0);
     uint y = blockY * get_local_size(1) + get_local_id(1);
 
-    if (x >= 600 || y >= 579)
+    if (x >= vp.width || y >= vp.height)
     {
       continue;
     }
 
-    float u = ((float)x / (float)600) * 2.0f - 1.0f;
-    float v = ((float)y / (float)579) * 2.0f - 1.0f;
+    float u = ((float)x / (float)vp.width) * 2.0f - 1.0f;
+    float v = ((float)y / (float)vp.height) * 2.0f - 1.0f;
 
     float4 o = mul(&invmv, mul(&invpr, make_float4(u, v, 0.0f, 1.0f)));
     float4 d = mul(&invmv, mul(&invpr, make_float4(u, v, 1.0f, 1.0f)));
@@ -289,6 +289,6 @@ int tmp = 0;
       break;
     }++tmp;
     }
-    framebuffer[y * 600 + x] = dst;
+    framebuffer[y * vp.width + x] = dst;
   }
 }
