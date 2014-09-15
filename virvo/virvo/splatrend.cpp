@@ -66,7 +66,47 @@ typedef recti Viewport;
 
 }
 
+namespace cl = virvo::cl;
 namespace gl = virvo::gl;
+
+namespace virvo
+{
+namespace cl
+{
+
+class buffer
+{
+public:
+
+    // CL-spec says that cl_mem is a pointer type
+    buffer() : data_(nullptr) {}
+    /* implicit */ buffer(cl_mem data) : data_(data) {}
+
+    ~buffer()
+    {
+        cl_int err = clReleaseMemObject(data_);
+
+        if (err != CL_SUCCESS)
+        {
+            // stderr - don't throw from dtor..
+            VV_LOG(0) << "Error releasing memory object: " << virvo::cl::errorString(err);
+        }
+    }
+
+    void operator=(cl_mem const& data) { data_ = data; }
+    operator cl_mem() const { return data_; }
+
+    cl_mem* ptr() { return &data_; }
+    cl_mem const* ptr() const { return &data_; }
+
+private:
+
+    cl_mem data_;
+
+};
+
+} // cl
+} // virvo
 
 struct CLProgram
 {
@@ -93,18 +133,18 @@ struct CLProgram
   cl_kernel bitonicsortkernel;
   cl_kernel spherekernel;
 
-  cl_mem clpbo;
+  cl::buffer clpbo;
   GLuint glpbo;
   GLuint gltex;
 
-  cl_mem spheres;
-  cl_mem bvhnodes;
-  cl_mem scalars;
-  cl_mem tf;
+  cl::buffer spheres;
+  cl::buffer bvhnodes;
+  cl::buffer scalars;
+  cl::buffer tf;
 
-  cl_mem vertexbuffer;
-  cl_mem indexbuffer;
-  cl_mem kdleafindices;
+  cl::buffer vertexbuffer;
+  cl::buffer indexbuffer;
+  cl::buffer kdleafindices;
 };
 
 typedef virvo::basic_aabb< ssize_t > box;
@@ -395,15 +435,15 @@ void updateCLPoints(const std::unique_ptr<CLProgram>& program, const std::vector
 
   size_t bnw = virvo::toolshed::iDivUp<size_t>(bvhnodes.size(), 4) < maximgw ? virvo::toolshed::iDivUp<size_t>(bvhnodes.size(), 4) : maximgw;
   size_t bnh = virvo::toolshed::iDivUp<size_t>(virvo::toolshed::iDivUp<size_t>(bvhnodes.size(), 4), maximgw);
-  createImage(bnw, bnh, program, &program->bvhnodes, bvhnodes.data());
+  createImage(bnw, bnh, program, program->bvhnodes.ptr(), bvhnodes.data());
 
   size_t sw = spheres.size() < maximgw ? spheres.size() : maximgw;
   size_t sh = virvo::toolshed::iDivUp(spheres.size(), maximgw);
-  createImage(sw, sh, program, &program->spheres, spheres.data());
+  createImage(sw, sh, program, program->spheres.ptr(), spheres.data());
 
   size_t scw = scalars.size() < maximgw ? scalars.size() : maximgw;
   size_t sch = virvo::toolshed::iDivUp(scalars.size(), maximgw);
-  createImage(scw, sch, program, &program->scalars, scalars.data(), CL_R);
+  createImage(scw, sch, program, program->scalars.ptr(), scalars.data(), CL_R);
 }
 
 void updateCLTf(const std::unique_ptr<CLProgram>& program, const std::vector<float>& tf, float scale)
@@ -425,7 +465,7 @@ void updateCLTf(const std::unique_ptr<CLProgram>& program, const std::vector<flo
     
   size_t tfw = tf4.size();
   assert(tfw == 256);
-  createImage(tfw, 1, program, &program->tf, tf4.data());
+  createImage(tfw, 1, program, program->tf.ptr(), tf4.data());
 }
 
 bool sortLeafs(const std::unique_ptr<CLProgram>& program, const std::vector<index_t>& indices,
@@ -463,7 +503,7 @@ bool sortLeafs(const std::unique_ptr<CLProgram>& program, const std::vector<inde
     return false;
   }
 
-  err = clEnqueueAcquireGLObjects(program->commands, 1, &program->indexbuffer, 0, NULL, NULL);
+  err = clEnqueueAcquireGLObjects(program->commands, 1, program->indexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueAcquireGLObjects(indexbuffer) failed";
@@ -479,7 +519,7 @@ bool sortLeafs(const std::unique_ptr<CLProgram>& program, const std::vector<inde
 
   clFinish(program->commands);
 
-  err = clEnqueueReleaseGLObjects(program->commands, 1, &program->indexbuffer, 0, NULL, NULL);
+  err = clEnqueueReleaseGLObjects(program->commands, 1, program->indexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueReleaseGLObjects(indexbuffer) failed";
@@ -526,14 +566,14 @@ bool sortPointsInLeafs(const std::unique_ptr<CLProgram>& program, const std::vec
     return false;
   }
 
-  err = clEnqueueAcquireGLObjects(program->commands, 1, &program->vertexbuffer, 0, NULL, NULL);
+  err = clEnqueueAcquireGLObjects(program->commands, 1, program->vertexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueAcquireGLObjects(vertexbuffer) failed";
     return false;
   }
 
-  err = clEnqueueAcquireGLObjects(program->commands, 1, &program->indexbuffer, 0, NULL, NULL);
+  err = clEnqueueAcquireGLObjects(program->commands, 1, program->indexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueAcquireGLObjects(indexbuffer) failed";
@@ -549,14 +589,14 @@ bool sortPointsInLeafs(const std::unique_ptr<CLProgram>& program, const std::vec
 
   clFinish(program->commands);
 
-  err = clEnqueueReleaseGLObjects(program->commands, 1, &program->vertexbuffer, 0, NULL, NULL);
+  err = clEnqueueReleaseGLObjects(program->commands, 1, program->vertexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueReleaseGLObjects(vertexbuffer) failed";
     return false;
   }
 
-  err = clEnqueueReleaseGLObjects(program->commands, 1, &program->indexbuffer, 0, NULL, NULL);
+  err = clEnqueueReleaseGLObjects(program->commands, 1, program->indexbuffer.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "clEnqueueReleaseGLObjects(indexbuffer) failed";
@@ -1080,15 +1120,15 @@ void virvo::SplatRend::sortNodes()
 void virvo::SplatRend::renderSplats()
 {
 #if 1
-  cl_mem invModelview = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
-  cl_mem invProjection = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
-  cl_mem viewport = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(virvo::Viewport), nullptr, nullptr);
+  cl::buffer invModelview = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
+  cl::buffer invProjection = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
+  cl::buffer viewport = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(virvo::Viewport), nullptr, nullptr);
 
   auto invmv = inverse(gl::getModelviewMatrix());
   auto invpr = inverse(gl::getProjectionMatrix());
   auto vp = gl::getViewport();
 
-  cl_int err = clEnqueueAcquireGLObjects(impl->clprogram->commands, 1, &impl->clprogram->clpbo, 0, NULL, NULL);
+  cl_int err = clEnqueueAcquireGLObjects(impl->clprogram->commands, 1, impl->clprogram->clpbo.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "Error registering pbo";
@@ -1145,7 +1185,7 @@ void virvo::SplatRend::renderSplats()
     return;
   }
 
-  err = clEnqueueReleaseGLObjects(impl->clprogram->commands, 1, &impl->clprogram->clpbo, 0, NULL, NULL);
+  err = clEnqueueReleaseGLObjects(impl->clprogram->commands, 1, impl->clprogram->clpbo.ptr(), 0, NULL, NULL);
   if (err != CL_SUCCESS)
   {
     VV_LOG(0) << "Error unregistering pbo";
