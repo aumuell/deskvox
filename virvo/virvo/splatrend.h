@@ -23,6 +23,8 @@
 
 #include "vvrenderer.h"
 
+#include <memory>
+
 class vvVolDesc;
 
 namespace virvo
@@ -34,14 +36,15 @@ public:
   SplatRend(vvVolDesc* vd, vvRenderState rs);
   ~SplatRend();
   void renderVolumeGL();
+  void setParameter(ParameterType param, vvParam const& newValue);
   void updateTransferFunction();
+  void setVolDesc(vvVolDesc* vd);
 
 private:
 
   struct Impl;
-  Impl* impl;
+  std::unique_ptr< Impl > impl;
 
-  void sortNodes();
   void renderSplats();
   void createSamples();
 

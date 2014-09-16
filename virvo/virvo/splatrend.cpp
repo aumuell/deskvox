@@ -55,6 +55,7 @@
 #include <memory>
 #include <random>
 #include <sstream>
+#include <stdexcept>
 
 // TODO: deduce this type from CL_DEVICE_ADDRESS_BITS
 typedef uint32_t index_t;
@@ -159,9 +160,10 @@ struct KdTreeNode : public box
   {
   }
 
-  KdTreeNode* leftChild;
-  KdTreeNode* rightChild;
-  KdTreeNode* parent;
+    typedef std::shared_ptr< KdTreeNode > node_ptr;
+    node_ptr leftChild;
+    node_ptr rightChild;
+    node_ptr parent;
 
   /*! \brief  leafs are numbered consecutively for reordering
    */
@@ -172,37 +174,6 @@ struct KdTreeNode : public box
   {
     return leftChild == nullptr && rightChild == nullptr;
   }
-};
-
-struct virvo::SplatRend::Impl
-{
-  Impl() : oldquality(1.0f), opacityscale(1.0f) {}
-
-  std::unique_ptr<vvShaderProgram> shader;
-  std::unique_ptr<CLProgram> clprogram;
-
-  std::vector<float> rgbatf;
-
-  std::vector<GLuint> texnames;
-  GLuint lutname;
-  GLuint vertexbuffer;
-  GLuint texcoordbuffer;
-  GLuint indexbuffer;
-
-  float oldquality;
-
-  float opacityscale;
-
-  size_t pointspernode;
-  std::vector< vec4 > points;
-  std::vector< vec4 > texcoords;
-  std::vector<float> scalars;
-  std::vector<float> tf;
-  std::vector<GLuint> indices;
-
-  KdTreeNode* kdroot;
-  std::vector<KdTreeNode*> kdnodes;
-  std::vector<KdTreeNode*> kdleafs;
 };
 
 struct Brick : public box
@@ -636,7 +607,7 @@ bool sortPointsInLeafs(const std::unique_ptr<CLProgram>& program, const std::vec
 
 void genPoints(std::vector< virvo::vec4 >* points, std::vector< virvo::vec4 >* texcoords,
   std::vector<float>* scalars,
-  std::vector<GLuint>* indices, const std::vector<KdTreeNode*>& kdleafs,
+  std::vector<GLuint>* indices, const std::vector< std::shared_ptr< KdTreeNode > >& kdleafs,
   size_t numpernode, const vvVolDesc* vd)
 {
   typedef std::minstd_rand0 random_number_generator;
@@ -695,11 +666,11 @@ void initBrick(const vvVolDesc* vd, Brick* b, const std::vector<float>& rgbatf)
   uint8_t minvox = std::numeric_limits<uint8_t>::max();
   uint32_t avg = 0;
   virvo::vec4 avg_rgba(0.0f);
-  for (size_t z = b->min[2]; z < b->max[2]; ++z)
+  for (ssize_t z = b->min[2]; z < b->max[2]; ++z)
   {
-    for (size_t y = b->min[1]; y < b->max[1]; ++y)
+    for (ssize_t y = b->min[1]; y < b->max[1]; ++y)
     {
-      for (size_t x = b->min[0]; x < b->max[0]; ++x)
+      for (ssize_t x = b->min[0]; x < b->max[0]; ++x)
       {
         uint8_t vox = *(*vd)(x, y, z);
         if (vox < minvox)
@@ -761,8 +732,9 @@ virvo::vector< 3, size_t > makeBricks(const vvVolDesc* vd, std::vector<Brick*>* 
   return numbricks;
 }
 
-void subdivide(KdTreeNode* node, std::vector<KdTreeNode*>* kdnodes, std::vector<KdTreeNode*>* kdleafs, virvo::vector< 3, size_t > const& corner,
-  virvo::vector< 3, size_t > const& numbricks, virvo::vector< 3, size_t > const& bricksize, std::vector<Brick*>* bricks)
+void subdivide(std::shared_ptr< KdTreeNode > node, std::vector< std::shared_ptr< KdTreeNode > >* kdnodes,
+    std::vector< std::shared_ptr< KdTreeNode > >* kdleafs, virvo::vector< 3, size_t > const& corner,
+    virvo::vector< 3, size_t > const& numbricks, virvo::vector< 3, size_t > const& bricksize, std::vector<Brick*>* bricks)
 {
   assert(node != nullptr);
 
@@ -885,8 +857,8 @@ void subdivide(KdTreeNode* node, std::vector<KdTreeNode*>* kdnodes, std::vector<
         numright[axis] = numbricks[axis];
       }
     }
-    node->leftChild = new KdTreeNode(cornerleft * bricksize, (cornerleft + numleft) * bricksize);
-    node->rightChild = new KdTreeNode(cornerright * bricksize, (cornerright + numright) * bricksize);
+    node->leftChild = std::make_shared< KdTreeNode >(cornerleft * bricksize, (cornerleft + numleft) * bricksize);
+    node->rightChild = std::make_shared< KdTreeNode >(cornerright * bricksize, (cornerright + numright) * bricksize);
     node->leftChild->parent = node;
     node->rightChild->parent = node;
     subdivide(node->leftChild, kdnodes, kdleafs, cornerleft, numleft, bricksize, &left);
@@ -903,7 +875,104 @@ void subdivide(KdTreeNode* node, std::vector<KdTreeNode*>* kdnodes, std::vector<
 }
 }
 
-virvo::SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
+namespace virvo
+{
+struct SplatRend::Impl
+{
+    Impl() : oldquality(1.0f), opacityscale(1.0f) {}
+
+    std::unique_ptr<vvShaderProgram> shader;
+    std::unique_ptr<CLProgram> clprogram;
+
+    std::vector<float> rgbatf;
+
+    std::vector<GLuint> texnames;
+    GLuint lutname;
+    GLuint vertexbuffer;
+    GLuint texcoordbuffer;
+    GLuint indexbuffer;
+
+    float oldquality;
+
+    float opacityscale;
+
+    size_t pointspernode;
+    std::vector< vec4 > points;
+    std::vector< vec4 > texcoords;
+    std::vector<float> scalars;
+    std::vector<float> tf;
+    std::vector<GLuint> indices;
+
+    typedef std::shared_ptr< KdTreeNode > node_ptr;
+
+    node_ptr kdroot;
+    std::vector< node_ptr > kdnodes;
+    std::vector< node_ptr > kdleafs;
+
+    void make_tf(vvVolDesc* vd)
+    {
+        glGenTextures(1, &lutname);
+
+        size_t lutEntries = 256;
+        tf.resize(4 * lutEntries);
+        vd->computeTFTexture(lutEntries, 1, 1, &tf[0]);
+
+        if (clprogram)
+        {
+            updateCLTf(std::move(clprogram), tf, opacityscale);
+        }
+    }
+
+    void make_vol_tex(vvVolDesc* vd)
+    {
+
+        // only one frame supported so far
+        texnames.resize(1);
+        glGenTextures(1, texnames.data());
+
+        glBindTexture(GL_TEXTURE_3D_EXT, texnames[0]);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+        glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_R_EXT, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage3D(GL_PROXY_TEXTURE_3D_EXT, 0, GL_LUMINANCE,
+            vd->vox[0], vd->vox[1], vd->vox[2], 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
+        GLint glwidth;
+        glGetTexLevelParameteriv(GL_PROXY_TEXTURE_3D_EXT, 0, GL_TEXTURE_WIDTH, &glwidth);
+        if (glwidth != 0)
+        {
+            glTexImage3D(GL_TEXTURE_3D_EXT, 0, GL_LUMINANCE, vd->vox[0], vd->vox[1], vd->vox[2], 0,
+                GL_LUMINANCE, GL_UNSIGNED_BYTE, vd->getRaw(0));
+        }
+        else
+        {
+            throw std::runtime_error("Could not accommodate volume texture");
+        }
+    }
+
+    void make_kd_tree(vvVolDesc* vd)
+    {
+        kdroot.reset();
+
+        std::vector<Brick*> bricks;
+        vector< 3, size_t > bricksize(8, 8, 8);
+        vector< 3, size_t > numbricks = makeBricks(vd, &bricks, bricksize, rgbatf);
+        kdroot = std::make_shared< KdTreeNode >(vector< 3, size_t >(0, 0, 0), numbricks * bricksize);
+        kdnodes.clear();
+        kdnodes.push_back(kdroot);
+        kdleafs.clear();
+        subdivide(kdroot, &kdnodes, &kdleafs, vector< 3, size_t >(0, 0, 0), numbricks, bricksize, &bricks);
+
+        VV_LOG(0) << "Num kd-leafs: " << kdleafs.size();
+
+        pointspernode = 50;
+    }
+};
+
+
+SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
   : vvRenderer(vd, rs)
   , impl(new virvo::SplatRend::Impl)
 {
@@ -912,70 +981,25 @@ virvo::SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
     VV_LOG(0) << "Could not initialize GLEW";
     return;
   }
-
-  // tranfer function
-  glGenTextures(1, &impl->lutname);
-  updateTransferFunction();
-  std::vector<Brick*> bricks;
-  vector< 3, size_t > bricksize(8, 8, 8);
-  vector< 3, size_t > numbricks = makeBricks(vd, &bricks, bricksize, impl->rgbatf);
-  impl->kdroot = new KdTreeNode(vector< 3, size_t >(0, 0, 0), numbricks * bricksize);
-  impl->kdnodes.clear();
-  impl->kdnodes.push_back(impl->kdroot);
-  impl->kdleafs.clear();
-  subdivide(impl->kdroot, &impl->kdnodes, &impl->kdleafs, vector< 3, size_t >(0, 0, 0), numbricks, bricksize, &bricks);std::cerr << impl->kdleafs.size() << std::endl;
-
-  size_t lutEntries = 256;
-  impl->tf.resize(4 * lutEntries);
-  vd->computeTFTexture(lutEntries, 1, 1, &impl->tf[0]);
-
-  impl->clprogram = std::unique_ptr<CLProgram>(initCLProgram());
-  if (impl->clprogram)
-  {
-     updateCLTf(std::move(impl->clprogram), impl->tf, impl->opacityscale);
-  }
-  impl->pointspernode = 50;
-  createSamples();
-
-  // only one frame supported so far
-  impl->texnames.resize(1);
-  glGenTextures(1, impl->texnames.data());
-
-  glBindTexture(GL_TEXTURE_3D_EXT, impl->texnames[0]);
-
-  glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-  glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-  glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_MAG_FILTER, (_interpolation) ? GL_LINEAR : GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_MIN_FILTER, (_interpolation) ? GL_LINEAR : GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_R_EXT, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexImage3D(GL_PROXY_TEXTURE_3D_EXT, 0, GL_LUMINANCE,
-    vd->vox[0], vd->vox[1], vd->vox[2], 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, NULL);
-  GLint glwidth;
-  glGetTexLevelParameteriv(GL_PROXY_TEXTURE_3D_EXT, 0, GL_TEXTURE_WIDTH, &glwidth);
-  if (glwidth != 0)
-  {
-    glTexImage3D(GL_TEXTURE_3D_EXT, 0, GL_LUMINANCE, vd->vox[0], vd->vox[1], vd->vox[2], 0,
-      GL_LUMINANCE, GL_UNSIGNED_BYTE, vd->getRaw(0));
-  }
-  else
-  {
-    VV_LOG(0) << "Could not accomodate volume texture";
-  }
+    
+    impl->clprogram = std::unique_ptr<CLProgram>(initCLProgram());
+    impl->make_tf(vd);
+    updateTransferFunction();
+    impl->make_kd_tree(vd);
+    createSamples();
+    impl->make_vol_tex(vd);
 }
 
-virvo::SplatRend::~SplatRend()
+SplatRend::~SplatRend()
 {
   glDeleteTextures(1, impl->texnames.data());
   glDeleteTextures(1, &impl->lutname);
   glDeleteBuffers(1, &impl->vertexbuffer);
   glDeleteBuffers(1, &impl->texcoordbuffer);
   glDeleteBuffers(1, &impl->indexbuffer);
-  delete impl;
 }
 
-void virvo::SplatRend::renderVolumeGL()
+void SplatRend::renderVolumeGL()
 {
   if (!_showBricks)
   {
@@ -1050,7 +1074,32 @@ void virvo::SplatRend::renderVolumeGL()
   vvRenderer::renderVolumeGL();
 }
 
-void virvo::SplatRend::updateTransferFunction()
+void SplatRend::setParameter(ParameterType param, vvParam const& newValue)
+{
+    switch (param)
+    {
+    case vvRenderer::VV_SLICEINT:
+      if (_interpolation != static_cast< virvo::tex_filter_mode >(newValue.asInt()))
+      {
+        _interpolation = static_cast< virvo::tex_filter_mode >(newValue.asInt());
+        for (size_t f = 0; f < 1 /*vd->frames */; ++f)
+        {
+          glBindTexture(GL_TEXTURE_3D_EXT, impl->texnames[f]);
+          glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_MAG_FILTER, (_interpolation) ? GL_LINEAR : GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_3D_EXT, GL_TEXTURE_MIN_FILTER, (_interpolation) ? GL_LINEAR : GL_NEAREST);
+        }
+        updateTransferFunction();
+      }
+      break;
+    default:
+
+        vvRenderer::setParameter(param, newValue);
+        break;
+
+    }
+}
+
+void SplatRend::updateTransferFunction()
 {
   static const size_t lutentries = 256;
   impl->rgbatf.resize(lutentries * 4);
@@ -1068,83 +1117,15 @@ void virvo::SplatRend::updateTransferFunction()
                GL_RGBA, GL_FLOAT, impl->rgbatf.data());
 }
 
-void virvo::SplatRend::sortNodes()
+void SplatRend::setVolDesc(vvVolDesc* vd)
 {
-  vvStopwatch sw;
-  sw.start();
-  vec3 eye = getEyePosition();
-#if 0
-  std::sort(impl->kdleafs.begin(), impl->kdleafs.end(),
-    [&](const KdTreeNode* lhs, const KdTreeNode* rhs)
-    {
-      virvo::aabb l(vd->objectCoords(lhs->getMin()), vd->objectCoords(lhs->getMax()));
-      virvo::aabb r(vd->objectCoords(rhs->getMin()), vd->objectCoords(rhs->getMax()));
-      return l.getCenter().dot(eye) < r.getCenter().dot(eye);
-    });
-#else
-  auto veye = vd->voxelCoords(eye);
-  auto minuseye = vd->voxelCoords(-eye);
-  vector< 3, ssize_t > vseye(veye[0], veye[1], veye[2]);
-  if (eye[0] < 0) vseye[0] = -ssize_t(minuseye[0]);
-  if (eye[1] < 0) vseye[1] = -ssize_t(minuseye[1]);
-  if (eye[2] < 0) vseye[2] = -ssize_t(minuseye[2]);
-  KdTreeNode* node = impl->kdroot;
-  std::vector<KdTreeNode*> stack;
-  impl->kdleafs.clear();
-  while (node != nullptr)
-  {
-    if (!node->isLeaf())
-    {
-      vector< 3, ssize_t > minval(node->leftChild->min[0],
-        node->leftChild->min[1], node->leftChild->min[2]);
-      vector< 3, ssize_t > maxval(node->leftChild->max[0],
-        node->leftChild->max[1], node->leftChild->max[2]);
-
-      for (size_t i = 0; i < 3; ++i)
-      {
-        if (minval[i] == node->min[i])
-        {
-          minval[i] = std::numeric_limits<ssize_t>::min();
-        }
-
-        if (maxval[i] == node->max[i])
-        {
-          maxval[i] = std::numeric_limits<ssize_t>::max();
-        }
-      }
-      box aabb(minval, maxval);
-
-      if (aabb.contains(vseye))
-      {
-        stack.push_back(node->leftChild);
-        node = node->rightChild;
-      }
-      else
-      {
-        stack.push_back(node->rightChild);
-        node = node->leftChild;
-      }
-    }
-    else 
-    {
-      impl->kdleafs.push_back(node);
-
-      if (stack.empty())
-      {
-        node = nullptr;
-      }
-      else
-      {
-        node = stack.back();
-        stack.pop_back();
-      }
-    }
-  }
-#endif
-//  std::cerr << sw.getDiff() << std::endl;
+    vvRenderer::setVolDesc(vd);
+    impl->make_kd_tree(vd);
+    createSamples();
+    impl->make_vol_tex(vd);
 }
 
-void virvo::SplatRend::renderSplats()
+void SplatRend::renderSplats()
 {
 #if 1
   cl::buffer invModelview = clCreateBuffer(impl->clprogram->context, CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR, sizeof(float) * 16, NULL, NULL);
@@ -1197,7 +1178,9 @@ void virvo::SplatRend::renderSplats()
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(numBlocks), &numBlocks);
   err |= clSetKernelArg(impl->clprogram->spherekernel, arg++, sizeof(gridWidth), &gridWidth);
 
+#if KERNEL_TIMER
   cl_event event;
+#endif
   err = clEnqueueNDRangeKernel(impl->clprogram->commands, impl->clprogram->spherekernel, 2, NULL, &gridSize[0], &blockSize[0], 0, NULL,
 #if KERNEL_TIMER
   &event
@@ -1310,7 +1293,7 @@ void virvo::SplatRend::renderSplats()
 #endif
 }
 
-void virvo::SplatRend::createSamples()
+void SplatRend::createSamples()
 {
   impl->points.clear();
   impl->texcoords.clear();
@@ -1336,7 +1319,7 @@ void virvo::SplatRend::createSamples()
 
   for (auto it = impl->kdleafs.begin(); it != impl->kdleafs.end(); ++it)
   {
-    KdTreeNode* node = *it;
+    std::shared_ptr< KdTreeNode > node = *it;
     size_t w = node->max.x - node->min.x;
     size_t h = node->max.y - node->min.y;
     size_t d = node->max.z - node->min.z;
@@ -1354,7 +1337,7 @@ void virvo::SplatRend::createSamples()
     }
 
     // refit the bvh
-    KdTreeNode* parent = node->parent;
+    std::shared_ptr< KdTreeNode > parent = node->parent;
     while (parent != nullptr)
     {
         box tmp = combine(*parent, *node);
@@ -1367,7 +1350,7 @@ void virvo::SplatRend::createSamples()
   std::vector<float> kdnodes;
   for (auto it = impl->kdnodes.begin(); it != impl->kdnodes.end(); ++it)
   {
-    KdTreeNode* node = *it;
+    std::shared_ptr< KdTreeNode > node = *it;
 
     virvo::aabb objaabb(vd->objectCoords(node->min), vd->objectCoords(node->max));
 
@@ -1410,6 +1393,7 @@ void virvo::SplatRend::createSamples()
 
   std::cerr << impl->scalars.size() << std::endl;
 }
+} // virvo
 
 
 /* plugin create */
