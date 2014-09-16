@@ -879,7 +879,14 @@ namespace virvo
 {
 struct SplatRend::Impl
 {
-    Impl() : oldquality(1.0f), opacityscale(1.0f) {}
+    explicit Impl(vvVolDesc* vd)
+        : vd(vd)
+        , oldquality(1.0f)
+        , opacityscale(1.0f)
+    {
+    }
+
+    vvVolDesc* vd;
 
     std::unique_ptr<vvShaderProgram> shader;
     std::unique_ptr<CLProgram> clprogram;
@@ -909,7 +916,7 @@ struct SplatRend::Impl
     std::vector< node_ptr > kdnodes;
     std::vector< node_ptr > kdleafs;
 
-    void make_tf(vvVolDesc* vd)
+    void make_tf()
     {
         glGenTextures(1, &lutname);
 
@@ -923,7 +930,7 @@ struct SplatRend::Impl
         }
     }
 
-    void make_vol_tex(vvVolDesc* vd)
+    void make_vol_tex()
     {
 
         // only one frame supported so far
@@ -952,7 +959,7 @@ struct SplatRend::Impl
         }
     }
 
-    void make_kd_tree(vvVolDesc* vd)
+    void make_kd_tree()
     {
         kdroot.reset();
 
@@ -969,12 +976,52 @@ struct SplatRend::Impl
 
         pointspernode = 50;
     }
+
+    std::vector< float > flatten_kd_tree()
+    {
+        std::vector< float > result;
+
+        for (auto it = kdnodes.begin(); it != kdnodes.end(); ++it)
+        {
+            std::shared_ptr< KdTreeNode > node = *it;
+
+            virvo::aabb objaabb(vd->objectCoords(node->min), vd->objectCoords(node->max));
+
+            for (size_t i = 0; i < 3; ++i)
+            {
+                result.push_back(objaabb.min[i]);
+            }
+            if (node->isLeaf())
+            {
+                result.push_back((float)node->firstSphereOffset);
+            }
+            else
+            {
+                result.push_back((float)node->firstChildOffset);
+            }
+
+            for (size_t i = 0; i < 3; ++i)
+            {
+                result.push_back(objaabb.max[i]);
+            }
+            if (node->isLeaf())
+            {
+                result.push_back(1.0f);
+            }
+            else
+            {
+                result.push_back(0.0f);
+            }
+        }
+
+        return result;
+    }
 };
 
 
 SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
   : vvRenderer(vd, rs)
-  , impl(new virvo::SplatRend::Impl)
+  , impl(new virvo::SplatRend::Impl(vd))
 {
   if (glewInit() != GLEW_OK)
   {
@@ -983,11 +1030,11 @@ SplatRend::SplatRend(vvVolDesc* vd, vvRenderState rs)
   }
     
     impl->clprogram = std::unique_ptr<CLProgram>(initCLProgram());
-    impl->make_tf(vd);
+    impl->make_tf();
     updateTransferFunction();
-    impl->make_kd_tree(vd);
+    impl->make_kd_tree();
     createSamples();
-    impl->make_vol_tex(vd);
+    impl->make_vol_tex();
 }
 
 SplatRend::~SplatRend()
@@ -1120,9 +1167,9 @@ void SplatRend::updateTransferFunction()
 void SplatRend::setVolDesc(vvVolDesc* vd)
 {
     vvRenderer::setVolDesc(vd);
-    impl->make_kd_tree(vd);
+    impl->make_kd_tree();
     createSamples();
-    impl->make_vol_tex(vd);
+    impl->make_vol_tex();
 }
 
 void SplatRend::renderSplats()
@@ -1347,40 +1394,7 @@ void SplatRend::createSamples()
     }
   }
 
-  std::vector<float> kdnodes;
-  for (auto it = impl->kdnodes.begin(); it != impl->kdnodes.end(); ++it)
-  {
-    std::shared_ptr< KdTreeNode > node = *it;
-
-    virvo::aabb objaabb(vd->objectCoords(node->min), vd->objectCoords(node->max));
-
-    for (size_t i = 0; i < 3; ++i)
-    {
-      kdnodes.push_back(objaabb.min[i]);
-    }
-    if (node->isLeaf())
-    {
-      kdnodes.push_back((float)node->firstSphereOffset);
-    }
-    else
-    {
-      kdnodes.push_back((float)node->firstChildOffset);
-    }
-
-    for (size_t i = 0; i < 3; ++i)
-    {
-      kdnodes.push_back(objaabb.max[i]);
-    }
-    if (node->isLeaf())
-    {
-      kdnodes.push_back(1.0f);
-    }
-    else
-    {
-      kdnodes.push_back(0.0f);
-    }
-  }
-  updateCLPoints(std::move(impl->clprogram), kdnodes, spheres, impl->scalars);
+  updateCLPoints(std::move(impl->clprogram), impl->flatten_kd_tree(), spheres, impl->scalars);
 
   // recreate old tree
   auto it1 = impl->kdnodes.begin();
@@ -1391,7 +1405,7 @@ void SplatRend::createSamples()
     (*it1)->max = (*it2).max;
   }
 
-  std::cerr << impl->scalars.size() << std::endl;
+  VV_LOG(0) << "Num samples: " << impl->scalars.size();
 }
 } // virvo
 
