@@ -71,7 +71,7 @@ typedef struct
   float m[4][4];
 } matrix4x4;
 
-inline float4 mul(__local matrix4x4* m, float4 v)
+inline float4 mul(__constant matrix4x4* m, float4 v)
 {
     float4 result;
     result.x = m->m[0][0] * v.x + m->m[1][0] * v.y + m->m[2][0] * v.z + m->m[3][0] * v.w;
@@ -101,16 +101,13 @@ __kernel void trace(
   __global float4* framebuffer,
   __read_only image2d_t bvhnodes, __read_only image2d_t spheres, uint numSpheres,
   __read_only image2d_t scalars, __read_only image2d_t tf,
-  __constant matrix4x4* invModelview, __constant matrix4x4* invProjection, __constant Viewport* vp,
+  __constant matrix4x4* invmv, __constant matrix4x4* invpr, __constant Viewport* vp,
   __global uint* blockCounter, uint numBlocks, uint gridWidth
 )
 {
   __local uint blockIndex;
   __local uint blockX;
   __local uint blockY;
-
-  __local matrix4x4 invmv;
-  __local matrix4x4 invpr;
 
   for (;;)
   {
@@ -119,15 +116,6 @@ __kernel void trace(
       blockIndex = atom_inc(blockCounter);
       blockX = blockIndex % gridWidth;
       blockY = blockIndex / gridWidth;
-
-      for (int i = 0; i < 4; ++i)
-      {
-        for (int j = 0; j < 4; ++j)
-        {
-          invmv.m[i][j] = invModelview->m[i][j];
-          invpr.m[i][j] = invProjection->m[i][j];
-        }
-      }
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -147,8 +135,8 @@ __kernel void trace(
     float u = ((float)x / (float)vp->width) * 2.0f - 1.0f;
     float v = ((float)y / (float)vp->height) * 2.0f - 1.0f;
 
-    float4 o = mul(&invmv, mul(&invpr, make_float4(u, v, 0.0f, 1.0f)));
-    float4 d = mul(&invmv, mul(&invpr, make_float4(u, v, 1.0f, 1.0f)));
+    float4 o = mul(invmv, mul(invpr, make_float4(u, v, 0.0f, 1.0f)));
+    float4 d = mul(invmv, mul(invpr, make_float4(u, v, 1.0f, 1.0f)));
     float3 origin = perspectiveDivide(o);
     float3 direction = perspectiveDivide(d);
     direction = direction - origin;
